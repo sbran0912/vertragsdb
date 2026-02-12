@@ -30,25 +30,25 @@ type User struct {
 }
 
 type Contract struct {
-	ID                    int        `json:"id"`
-	ContractNumber        string     `json:"contract_number"`
-	Title                 string     `json:"title"`
-	Content               string     `json:"content"`
-	Conditions            string     `json:"conditions"`
-	NoticePeriod          *int       `json:"notice_period"`            // Kündigungsfrist in Monaten
-	MinimumTerm           *time.Time `json:"minimum_term"`             // Mindestlaufzeit bis (Datum)
-	TermMonths            *int       `json:"term_months"`              // Laufzeit in Monaten
-	CancellationDate      *time.Time `json:"cancellation_date"`        // Berechneter Kündigungstermin
+	ID                     int        `json:"id"`
+	ContractNumber         string     `json:"contract_number"`
+	Title                  string     `json:"title"`
+	Content                string     `json:"content"`
+	Conditions             string     `json:"conditions"`
+	NoticePeriod           *int       `json:"notice_period"`            // Kündigungsfrist in Monaten
+	MinimumTerm            *time.Time `json:"minimum_term"`             // Mindestlaufzeit bis (Datum)
+	TermMonths             *int       `json:"term_months"`              // Laufzeit in Monaten
+	CancellationDate       *time.Time `json:"cancellation_date"`        // Berechneter Kündigungstermin
 	CancellationActionDate *time.Time `json:"cancellation_action_date"` // Berechnete Kündigungsvornahme
-	ValidFrom             time.Time  `json:"valid_from"`
-	ValidUntil            *time.Time `json:"valid_until"`
-	Partner               string     `json:"partner"`
-	Category              string     `json:"category"`
-	ContractType          string     `json:"contract_type"` // framework or individual
-	FrameworkContractID   *int       `json:"framework_contract_id"`
-	IsTerminated          bool       `json:"is_terminated"`
-	TerminatedAt          *time.Time `json:"terminated_at"`
-	CreatedAt             time.Time  `json:"created_at"`
+	ValidFrom              time.Time  `json:"valid_from"`
+	ValidUntil             *time.Time `json:"valid_until"`
+	Partner                string     `json:"partner"`
+	Category               string     `json:"category"`
+	ContractType           string     `json:"contract_type"` // framework or individual
+	FrameworkContractID    *int       `json:"framework_contract_id"`
+	IsTerminated           bool       `json:"is_terminated"`
+	TerminatedAt           *time.Time `json:"terminated_at"`
+	CreatedAt              time.Time  `json:"created_at"`
 }
 
 type Document struct {
@@ -60,8 +60,8 @@ type Document struct {
 }
 
 type Config struct {
-	ID                      int `json:"id"`
-	TerminationWarningDays  int `json:"termination_warning_days"`
+	ID                     int `json:"id"`
+	TerminationWarningDays int `json:"termination_warning_days"`
 }
 
 type Claims struct {
@@ -590,20 +590,20 @@ func updateContractHandler(w http.ResponseWriter, r *http.Request) {
 
 func getContractsHandler(w http.ResponseWriter, r *http.Request) {
 	query := "SELECT id, contract_number, title, content, conditions, notice_period, minimum_term, term_months, cancellation_date, cancellation_action_date, valid_from, valid_until, partner, category, contract_type, framework_contract_id, is_terminated, terminated_at, created_at FROM contracts WHERE 1=1"
-	
+
 	args := []interface{}{}
-	
+
 	if search := r.URL.Query().Get("search"); search != "" {
 		query += " AND (title LIKE ? OR partner LIKE ? OR content LIKE ?)"
 		searchParam := "%" + search + "%"
 		args = append(args, searchParam, searchParam, searchParam)
 	}
-	
+
 	if category := r.URL.Query().Get("category"); category != "" {
 		query += " AND category = ?"
 		args = append(args, category)
 	}
-	
+
 	if onlyValid := r.URL.Query().Get("only_valid"); onlyValid == "true" {
 		query += " AND is_terminated = 0 AND (valid_until IS NULL OR valid_until > datetime('now'))"
 	}
@@ -869,34 +869,41 @@ func calculateCancellationDatesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
+
+	type calcContract struct {
+		id           int
+		validFrom    time.Time
+		noticePeriod sql.NullInt64
+		termMonths   sql.NullInt64
+		minimumTerm  sql.NullTime
+	}
+
+	var contracts []calcContract
+	for rows.Next() {
+		var c calcContract
+		if err := rows.Scan(&c.id, &c.validFrom, &c.noticePeriod, &c.minimumTerm, &c.termMonths); err != nil {
+			continue
+		}
+		contracts = append(contracts, c)
+	}
+	rows.Close()
 
 	today := time.Now().Truncate(24 * time.Hour)
 	updated := 0
 
-	for rows.Next() {
-		var id int
-		var validFrom time.Time
-		var noticePeriod, termMonths sql.NullInt64
-		var minimumTerm sql.NullTime
-
-		if err := rows.Scan(&id, &validFrom, &noticePeriod, &minimumTerm, &termMonths); err != nil {
-			continue
-		}
-
+	for _, c := range contracts {
 		// Alle Felder müssen gesetzt sein
-		if !noticePeriod.Valid || !minimumTerm.Valid || !termMonths.Valid || termMonths.Int64 <= 0 {
-			// Felder auf NULL setzen falls unvollständig
-			db.Exec("UPDATE contracts SET cancellation_date = NULL, cancellation_action_date = NULL WHERE id = ?", id)
+		if !c.noticePeriod.Valid || !c.minimumTerm.Valid || !c.termMonths.Valid || c.termMonths.Int64 <= 0 {
+			db.Exec("UPDATE contracts SET cancellation_date = NULL, cancellation_action_date = NULL WHERE id = ?", c.id)
 			continue
 		}
 
-		np := int(noticePeriod.Int64)
-		tm := int(termMonths.Int64)
-		minTerm := minimumTerm.Time
+		np := int(c.noticePeriod.Int64)
+		tm := int(c.termMonths.Int64)
+		minTerm := c.minimumTerm.Time
 
 		// Schritt 1: Erste Periodengrenze >= Mindestlaufzeit
-		termin := validFrom
+		termin := c.validFrom
 		for termin.Before(minTerm) {
 			termin = termin.AddDate(0, tm, 0)
 		}
@@ -908,9 +915,8 @@ func calculateCancellationDatesHandler(w http.ResponseWriter, r *http.Request) {
 
 		cancDate := termin
 		cancActionDate := termin.AddDate(0, -np, 0)
-
 		_, err = db.Exec("UPDATE contracts SET cancellation_date = ?, cancellation_action_date = ? WHERE id = ?",
-			cancDate, cancActionDate, id)
+			cancDate, cancActionDate, c.id)
 		if err == nil {
 			updated++
 		}
