@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vertragsdatenbank</title>
+    <link rel="stylesheet" href="/src/styles.css">
+</head>
+<body>
+    <div id="app">
+        <div id="login-page" class="page">
+            <div class="login-container">
+                <h1>Vertragsdatenbank</h1>
+                <form id="login-form">
+                    <div class="form-group">
+                        <label for="username">Benutzername</label>
+                        <input type="text" id="username" name="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Passwort</label>
+                        <input type="password" id="password" name="password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Anmelden</button>
+                    <div id="login-error" class="error-message"></div>
+                </form>
+            </div>
+        </div>
+
+        <div id="main-page" class="page hidden">
+            <nav class="navbar">
+                <div class="nav-content">
+                    <h1>Vertragsdatenbank</h1>
+                    <div class="nav-right">
+                        <span id="user-info"></span>
+                        <button id="logout-btn" class="btn btn-secondary">Abmelden</button>
+                    </div>
+                </div>
+            </nav>
+
+            <div class="container">
+                <div class="sidebar">
+                    <ul class="nav-menu">
+                        <li><a href="#" class="nav-link active" data-page="contracts">Verträge</a></li>
+                        <li><a href="#" class="nav-link" data-page="reports">Berichte</a></li>
+                        <li><a href="#" class="nav-link admin-only" data-page="users">Benutzerverwaltung</a></li>
+                        <li><a href="#" class="nav-link admin-only" data-page="settings">Einstellungen</a></li>
+                    </ul>
+                </div>
+
+                <div class="main-content">
+                    <!-- Contracts Page -->
+                    <div id="contracts-page" class="content-page">
+                        <div class="page-header">
+                            <h2>Verträge</h2>
+                            <button id="new-contract-btn" class="btn btn-primary admin-only">Neuer Vertrag</button>
+                        </div>
+
+                        <div class="filters">
+                            <input type="text" id="search-input" placeholder="Suche nach Titel, Partner oder Inhalt...">
+                            <select id="category-filter">
+                                <option value="">Alle Kategorien</option>
+                                <option value="IT">IT</option>
+                                <option value="Gebäude">Gebäude</option>
+                                <option value="Versicherungen">Versicherungen</option>
+                            </select>
+                            <label>
+                                <input type="checkbox" id="only-valid-filter"> Nur gültige Verträge
+                            </label>
+                            <button id="search-btn" class="btn btn-secondary">Suchen</button>
+                        </div>
+
+                        <div id="contracts-list"></div>
+                    </div>
+
+                    <!-- Contract Detail Page -->
+                    <div id="contract-detail-page" class="content-page hidden">
+                        <div class="page-header">
+                            <button id="back-to-contracts" class="btn btn-secondary">← Zurück</button>
+                            <div>
+                                <button id="edit-contract-btn" class="btn btn-primary admin-only">Bearbeiten</button>
+                                <button id="terminate-contract-btn" class="btn btn-danger admin-only">Vertrag beenden</button>
+                            </div>
+                        </div>
+                        <div id="contract-detail-content"></div>
+                    </div>
+
+                    <!-- Contract Form Page -->
+                    <div id="contract-form-page" class="content-page hidden">
+                        <div class="page-header">
+                            <h2 id="form-title">Neuer Vertrag</h2>
+                            <button id="cancel-form-btn" class="btn btn-secondary">Abbrechen</button>
+                        </div>
+                        <form id="contract-form">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="contract-type">Vertragstyp *</label>
+                                    <select id="contract-type" name="contract_type" required>
+                                        <option value="individual">Einzelvertrag</option>
+                                        <option value="framework">Rahmenvertrag</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" id="framework-group">
+                                    <label for="framework-contract">Rahmenvertrag</label>
+                                    <select id="framework-contract" name="framework_contract_id">
+                                        <option value="">Keiner</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="title">Vertragstitel *</label>
+                                    <input type="text" id="title" name="title" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="partner">Vertragspartner *</label>
+                                    <input type="text" id="partner" name="partner" required>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="category">Kategorie *</label>
+                                    <select id="category" name="category" required>
+                                        <option value="IT">IT</option>
+                                        <option value="Gebäude">Gebäude</option>
+                                        <option value="Versicherungen">Versicherungen</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="valid-from">Gültig ab *</label>
+                                    <input type="date" id="valid-from" name="valid_from" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="valid-until">Gültig bis</label>
+                                    <input type="date" id="valid-until" name="valid_until">
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="content">Vertragsinhalt</label>
+                                <textarea id="content" name="content" rows="4"></textarea>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="conditions">Vertragskonditionen</label>
+                                <textarea id="conditions" name="conditions" rows="4"></textarea>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="notice-period">Kündigungsfrist (Monate)</label>
+                                    <input type="number" id="notice-period" name="notice_period" min="0" placeholder="z.B. 3">
+                                </div>
+                                <div class="form-group">
+                                    <label for="minimum-term">Mindestlaufzeit bis</label>
+                                    <input type="date" id="minimum-term" name="minimum_term">
+                                </div>
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">Speichern</button>
+                                <button type="button" id="cancel-form-btn-2" class="btn btn-secondary">Abbrechen</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Reports Page -->
+                    <div id="reports-page" class="content-page hidden">
+                        <h2>Berichte</h2>
+                        
+                        <div class="report-section">
+                            <h3>Alle gültigen Verträge</h3>
+                            <button id="show-valid-contracts" class="btn btn-primary">Anzeigen</button>
+                            <div id="valid-contracts-list"></div>
+                        </div>
+
+                        <div class="report-section">
+                            <h3>Verträge mit ablaufender Kündigungsfrist</h3>
+                            <button id="show-expiring-contracts" class="btn btn-primary">Anzeigen</button>
+                            <div id="expiring-contracts-list"></div>
+                        </div>
+                    </div>
+
+                    <!-- Users Page -->
+                    <div id="users-page" class="content-page hidden">
+                        <div class="page-header">
+                            <h2>Benutzerverwaltung</h2>
+                            <button id="new-user-btn" class="btn btn-primary">Neuer Benutzer</button>
+                        </div>
+                        <div id="users-list"></div>
+
+                        <!-- User Form Modal -->
+                        <div id="user-modal" class="modal hidden">
+                            <div class="modal-content">
+                                <h3 id="user-modal-title">Neuer Benutzer</h3>
+                                <form id="user-form">
+                                    <div class="form-group">
+                                        <label for="new-username">Benutzername *</label>
+                                        <input type="text" id="new-username" name="username" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="new-password" id="new-password-label">Passwort *</label>
+                                        <input type="password" id="new-password" name="password" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="role">Rolle *</label>
+                                        <select id="role" name="role" required>
+                                            <option value="viewer">Viewer</option>
+                                            <option value="admin">Admin</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-actions">
+                                        <button type="submit" id="user-submit-btn" class="btn btn-primary">Erstellen</button>
+                                        <button type="button" id="cancel-user-btn" class="btn btn-secondary">Abbrechen</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Settings Page -->
+                    <div id="settings-page" class="content-page hidden">
+                        <h2>Einstellungen</h2>
+                        <form id="settings-form">
+                            <div class="form-group">
+                                <label for="warning-days">Vorlaufzeit für Kündigungsfristen (Tage)</label>
+                                <input type="number" id="warning-days" name="termination_warning_days" min="1" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Speichern</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
