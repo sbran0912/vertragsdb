@@ -59,11 +59,6 @@ type Document struct {
 	UploadedAt time.Time `json:"uploaded_at"`
 }
 
-type Config struct {
-	ID                     int `json:"id"`
-	TerminationWarningDays int `json:"termination_warning_days"`
-}
-
 type Category struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
@@ -123,12 +118,6 @@ func initDB() error {
 		FOREIGN KEY (contract_id) REFERENCES contracts(id)
 	);
 
-	CREATE TABLE IF NOT EXISTS config (
-		id INTEGER PRIMARY KEY CHECK(id = 1),
-		termination_warning_days INTEGER DEFAULT 90
-	);
-
-	INSERT OR IGNORE INTO config (id, termination_warning_days) VALUES (1, 90);
 	`
 
 	_, err = db.Exec(schema)
@@ -870,8 +859,12 @@ func downloadDocumentHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getExpiringContractsHandler(w http.ResponseWriter, r *http.Request) {
-	var config Config
-	db.QueryRow("SELECT termination_warning_days FROM config WHERE id = 1").Scan(&config.TerminationWarningDays)
+	days := 90
+	if d := r.URL.Query().Get("days"); d != "" {
+		if parsed, err := strconv.Atoi(d); err == nil && parsed > 0 {
+			days = parsed
+		}
+	}
 
 	// Zeige Verträge, bei denen die Kündigungsvornahme innerhalb des Vorlaufzeitraums liegt.
 	query := `SELECT id, contract_number, title, content, conditions, notice_period,
@@ -884,7 +877,7 @@ func getExpiringContractsHandler(w http.ResponseWriter, r *http.Request) {
 		AND cancellation_action_date BETWEEN date('now') AND date('now', '+' || ? || ' days')
 		ORDER BY cancellation_action_date ASC`
 
-	rows, err := db.Query(query, config.TerminationWarningDays)
+	rows, err := db.Query(query, days)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -960,37 +953,6 @@ func calculateCancellationDatesHandler(w http.ResponseWriter, r *http.Request) {
 		"message": fmt.Sprintf("Kündigungstermine für %d Verträge berechnet", updated),
 		"updated": updated,
 	})
-}
-
-func getConfigHandler(w http.ResponseWriter, r *http.Request) {
-	var config Config
-	err := db.QueryRow("SELECT id, termination_warning_days FROM config WHERE id = 1").
-		Scan(&config.ID, &config.TerminationWarningDays)
-
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	json.NewEncoder(w).Encode(config)
-}
-
-func updateConfigHandler(w http.ResponseWriter, r *http.Request) {
-	var config Config
-	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	_, err := db.Exec("UPDATE config SET termination_warning_days = ? WHERE id = 1",
-		config.TerminationWarningDays)
-
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	json.NewEncoder(w).Encode(config)
 }
 
 // Category handlers
@@ -1141,10 +1103,6 @@ func main() {
 	// Reporting routes
 	r.HandleFunc("/api/reports/expiring", authMiddleware(getExpiringContractsHandler)).Methods("GET")
 	r.HandleFunc("/api/contracts/calculate-dates", adminOnly(calculateCancellationDatesHandler)).Methods("POST")
-
-	// Config routes
-	r.HandleFunc("/api/config", authMiddleware(getConfigHandler)).Methods("GET")
-	r.HandleFunc("/api/config", adminOnly(updateConfigHandler)).Methods("PUT")
 
 	// Category routes
 	r.HandleFunc("/api/categories", authMiddleware(getCategoriesHandler)).Methods("GET")

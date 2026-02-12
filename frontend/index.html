@@ -182,7 +182,11 @@
 
                         <div class="report-section">
                             <h3>Verträge mit ablaufender Kündigungsfrist</h3>
-                            <button id="show-expiring-contracts" class="btn btn-primary">Anzeigen</button>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 1rem;">
+                                <label for="warning-days" style="white-space: nowrap;">Vorlaufzeit (Tage):</label>
+                                <input type="number" id="warning-days" value="90" min="1" style="width: 80px;">
+                                <button id="show-expiring-contracts" class="btn btn-primary">Anzeigen</button>
+                            </div>
                             <div id="expiring-contracts-list"></div>
                         </div>
                     </div>
@@ -227,15 +231,7 @@
                     <!-- Settings Page -->
                     <div id="settings-page" class="content-page hidden">
                         <h2>Einstellungen</h2>
-                        <form id="settings-form">
-                            <div class="form-group">
-                                <label for="warning-days">Vorlaufzeit für Kündigungsfristen (Tage)</label>
-                                <input type="number" id="warning-days" name="termination_warning_days" min="1" required>
-                            </div>
-                            <button type="submit" class="btn btn-primary">Speichern</button>
-                        </form>
 
-                        <hr style="margin: 2rem 0;">
                         <div class="page-header">
                             <h3>Kategorien verwalten</h3>
                             <button id="new-category-btn" class="btn btn-primary">Neue Kategorie</button>

@@ -103,7 +103,6 @@ function showContent(contentName) {
     } else if (contentName === 'users') {
         loadUsers();
     } else if (contentName === 'settings') {
-        loadSettings();
         loadCategoriesAdmin();
     }
 }
@@ -653,33 +652,6 @@ async function saveUser(formData) {
     }
 }
 
-// Settings
-async function loadSettings() {
-    try {
-        const config = await api('/config');
-        document.getElementById('warning-days').value = config.termination_warning_days;
-    } catch (error) {
-        console.error('Error loading settings:', error);
-    }
-}
-
-async function saveSettings(formData) {
-    const data = {
-        termination_warning_days: parseInt(formData.get('termination_warning_days')),
-    };
-    
-    try {
-        await api('/config', {
-            method: 'PUT',
-            body: JSON.stringify(data),
-        });
-        alert('Einstellungen gespeichert');
-    } catch (error) {
-        console.error('Error saving settings:', error);
-        alert('Fehler beim Speichern der Einstellungen');
-    }
-}
-
 // Categories
 async function loadCategories() {
     try {
@@ -859,7 +831,8 @@ window.showValidContracts = showValidContracts;
 
 async function showExpiringContracts() {
     try {
-        const contracts = await api('/reports/expiring');
+        const days = document.getElementById('warning-days').value || 90;
+        const contracts = await api(`/reports/expiring?days=${days}`);
         const container = document.getElementById('expiring-contracts-list');
 
         if (!contracts || contracts.length === 0) {
@@ -993,13 +966,6 @@ document.addEventListener('DOMContentLoaded', () => {
         await saveUser(formData);
     });
     
-    // Settings
-    document.getElementById('settings-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const formData = new FormData(e.target);
-        await saveSettings(formData);
-    });
-
     // Category management
     document.getElementById('new-category-btn').addEventListener('click', () => {
         openCategoryModal({

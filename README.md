@@ -20,8 +20,8 @@ Eine webbasierte Anwendung zur Verwaltung von Verträgen. Verträge können erfa
 - **Dokumentenverwaltung** – PDF-Dokumente können je Vertrag hochgeladen und heruntergeladen werden
 - **Benutzerverwaltung** – Anlegen, Bearbeiten (inkl. Passwortvergabe) und Löschen von Benutzern; Rollen `admin` (Lesen + Schreiben) und `viewer` (nur Lesen)
 - **Kategorieverwaltung** – Vertragskategorien über die GUI anlegen, umbenennen und löschen
-- **Berichte** – Alle gültigen Verträge; Verträge mit ablaufender Kündigungsfrist
-- **Einstellungen** – Vorlaufzeit für Kündigungsfristen (in Tagen) konfigurierbar; Kategorieverwaltung
+- **Berichte** – Alle gültigen Verträge; Verträge mit ablaufender Kündigungsfrist (Vorlaufzeit frei wählbar)
+- **Einstellungen** – Kategorieverwaltung
 
 ## Projektstruktur
 
@@ -107,12 +107,6 @@ Das Passwort sollte nach dem ersten Login geändert werden.
 
 Kategorien werden unter **Einstellungen → Kategorien verwalten** gepflegt. Beim Umbenennen einer Kategorie werden alle Verträge mit dem alten Namen automatisch aktualisiert. Eine Kategorie kann nur gelöscht werden, wenn sie von keinem Vertrag verwendet wird.
 
-### Konfiguration (`config`)
-
-| Feld | Typ | Beschreibung |
-|---|---|---|
-| `termination_warning_days` | INTEGER | Vorlaufzeit für den Bericht „ablaufende Kündigungsfrist" (Standard: 90 Tage) |
-
 ## REST-API
 
 ### Authentifizierung
@@ -136,7 +130,7 @@ Authorization: Bearer <token>
 | `GET` | `/api/contracts/{id}/documents` | viewer | Dokumente eines Vertrags |
 | `POST` | `/api/contracts/{id}/documents` | admin | Dokument hochladen (PDF, max. 10 MB) |
 | `GET` | `/api/documents/{docId}/download` | viewer | Dokument herunterladen |
-| `GET` | `/api/reports/expiring` | viewer | Verträge mit ablaufender Kündigungsfrist |
+| `GET` | `/api/reports/expiring?days=90` | viewer | Verträge mit ablaufender Kündigungsfrist (Standard: 90 Tage) |
 | `POST` | `/api/contracts/calculate-dates` | admin | Kündigungstermine für alle Verträge berechnen |
 | `GET` | `/api/users` | viewer | Alle Benutzer |
 | `POST` | `/api/users` | admin | Neuen Benutzer anlegen |
@@ -146,8 +140,6 @@ Authorization: Bearer <token>
 | `POST` | `/api/categories` | admin | Neue Kategorie anlegen |
 | `PUT` | `/api/categories/{id}` | admin | Kategorie umbenennen (kaskadiert auf Verträge) |
 | `DELETE` | `/api/categories/{id}` | admin | Kategorie löschen (nur wenn unbenutzt) |
-| `GET` | `/api/config` | viewer | Konfiguration abrufen |
-| `PUT` | `/api/config` | admin | Konfiguration speichern |
 
 ## Benutzerverwaltung
 
@@ -220,7 +212,7 @@ Ein Vertrag erscheint im Bericht, wenn gilt:
 Heute ≤ Kündigungsvornahme ≤ Heute + Vorlaufzeit
 ```
 
-Der Vorlaufzeitraum ist unter **Einstellungen → Vorlaufzeit für Kündigungsfristen** konfigurierbar (Standard: 90 Tage).
+Die Vorlaufzeit wird direkt neben dem Button im Bericht eingegeben (Standard: 90 Tage).
 
 Voraussetzungen:
 - Vertrag ist nicht manuell beendet
