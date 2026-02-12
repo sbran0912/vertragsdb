@@ -30,22 +30,25 @@ type User struct {
 }
 
 type Contract struct {
-	ID                  int        `json:"id"`
-	ContractNumber      string     `json:"contract_number"`
-	Title               string     `json:"title"`
-	Content             string     `json:"content"`
-	Conditions          string     `json:"conditions"`
-	NoticePeriod        *int       `json:"notice_period"`  // Monate (Integer)
-	MinimumTerm         *time.Time `json:"minimum_term"`   // Datum
-	ValidFrom           time.Time  `json:"valid_from"`
-	ValidUntil          *time.Time `json:"valid_until"`
-	Partner             string     `json:"partner"`
-	Category            string     `json:"category"`
-	ContractType        string     `json:"contract_type"` // framework or individual
-	FrameworkContractID *int       `json:"framework_contract_id"`
-	IsTerminated        bool       `json:"is_terminated"`
-	TerminatedAt        *time.Time `json:"terminated_at"`
-	CreatedAt           time.Time  `json:"created_at"`
+	ID                    int        `json:"id"`
+	ContractNumber        string     `json:"contract_number"`
+	Title                 string     `json:"title"`
+	Content               string     `json:"content"`
+	Conditions            string     `json:"conditions"`
+	NoticePeriod          *int       `json:"notice_period"`            // Kündigungsfrist in Monaten
+	MinimumTerm           *time.Time `json:"minimum_term"`             // Mindestlaufzeit bis (Datum)
+	TermMonths            *int       `json:"term_months"`              // Laufzeit in Monaten
+	CancellationDate      *time.Time `json:"cancellation_date"`        // Berechneter Kündigungstermin
+	CancellationActionDate *time.Time `json:"cancellation_action_date"` // Berechnete Kündigungsvornahme
+	ValidFrom             time.Time  `json:"valid_from"`
+	ValidUntil            *time.Time `json:"valid_until"`
+	Partner               string     `json:"partner"`
+	Category              string     `json:"category"`
+	ContractType          string     `json:"contract_type"` // framework or individual
+	FrameworkContractID   *int       `json:"framework_contract_id"`
+	IsTerminated          bool       `json:"is_terminated"`
+	TerminatedAt          *time.Time `json:"terminated_at"`
+	CreatedAt             time.Time  `json:"created_at"`
 }
 
 type Document struct {
@@ -91,6 +94,9 @@ func initDB() error {
 		conditions TEXT,
 		notice_period INTEGER,
 		minimum_term DATE,
+		term_months INTEGER,
+		cancellation_date DATE,
+		cancellation_action_date DATE,
 		valid_from DATETIME NOT NULL,
 		valid_until DATETIME,
 		partner TEXT NOT NULL,
@@ -142,7 +148,7 @@ func migrateDB() error {
 	var version int
 	db.QueryRow("PRAGMA user_version").Scan(&version)
 
-	if version >= 2 {
+	if version >= 3 {
 		return nil
 	}
 
@@ -224,7 +230,27 @@ func migrateDB() error {
 	}
 
 	_, err = db.Exec("PRAGMA user_version = 2")
-	return err
+	if err != nil {
+		return err
+	}
+	version = 2
+
+	// Migration v3: Neue Spalten term_months, cancellation_date, cancellation_action_date
+	if version < 3 {
+		for _, col := range []string{
+			"ALTER TABLE contracts ADD COLUMN term_months INTEGER",
+			"ALTER TABLE contracts ADD COLUMN cancellation_date DATE",
+			"ALTER TABLE contracts ADD COLUMN cancellation_action_date DATE",
+		} {
+			db.Exec(col) // Fehler ignorieren falls Spalte schon existiert
+		}
+		_, err = db.Exec("PRAGMA user_version = 3")
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func generateToken(user User) (string, error) {
@@ -493,13 +519,17 @@ func createContractHandler(w http.ResponseWriter, r *http.Request) {
 	if contract.MinimumTerm != nil {
 		minimumTerm = *contract.MinimumTerm
 	}
+	var termMonths interface{}
+	if contract.TermMonths != nil {
+		termMonths = *contract.TermMonths
+	}
 
 	result, err := db.Exec(`INSERT INTO contracts
 		(contract_number, title, content, conditions, notice_period, minimum_term,
-		valid_from, valid_until, partner, category, contract_type, framework_contract_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		term_months, valid_from, valid_until, partner, category, contract_type, framework_contract_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		contract.ContractNumber, contract.Title, contract.Content, contract.Conditions,
-		noticePeriod, minimumTerm, contract.ValidFrom, contract.ValidUntil,
+		noticePeriod, minimumTerm, termMonths, contract.ValidFrom, contract.ValidUntil,
 		contract.Partner, contract.Category, contract.ContractType, frameworkID)
 
 	if err != nil {
@@ -536,14 +566,18 @@ func updateContractHandler(w http.ResponseWriter, r *http.Request) {
 	if contract.MinimumTerm != nil {
 		minimumTerm = *contract.MinimumTerm
 	}
+	var termMonths interface{}
+	if contract.TermMonths != nil {
+		termMonths = *contract.TermMonths
+	}
 
 	_, err := db.Exec(`UPDATE contracts SET
 		title = ?, content = ?, conditions = ?, notice_period = ?,
-		minimum_term = ?, valid_from = ?, valid_until = ?, partner = ?,
+		minimum_term = ?, term_months = ?, valid_from = ?, valid_until = ?, partner = ?,
 		category = ?, contract_type = ?, framework_contract_id = ?
 		WHERE id = ?`,
 		contract.Title, contract.Content, contract.Conditions, noticePeriod,
-		minimumTerm, contract.ValidFrom, contract.ValidUntil, contract.Partner,
+		minimumTerm, termMonths, contract.ValidFrom, contract.ValidUntil, contract.Partner,
 		contract.Category, contract.ContractType, frameworkID, id)
 
 	if err != nil {
@@ -555,7 +589,7 @@ func updateContractHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getContractsHandler(w http.ResponseWriter, r *http.Request) {
-	query := "SELECT id, contract_number, title, content, conditions, notice_period, minimum_term, valid_from, valid_until, partner, category, contract_type, framework_contract_id, is_terminated, terminated_at, created_at FROM contracts WHERE 1=1"
+	query := "SELECT id, contract_number, title, content, conditions, notice_period, minimum_term, term_months, cancellation_date, cancellation_action_date, valid_from, valid_until, partner, category, contract_type, framework_contract_id, is_terminated, terminated_at, created_at FROM contracts WHERE 1=1"
 	
 	args := []interface{}{}
 	
@@ -583,15 +617,22 @@ func getContractsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
+	contracts := scanContracts(rows)
+	json.NewEncoder(w).Encode(contracts)
+}
+
+// scanContracts liest alle Zeilen aus einem Contracts-Query und gibt sie als Slice zurück.
+func scanContracts(rows *sql.Rows) []Contract {
 	var contracts []Contract
 	for rows.Next() {
 		var contract Contract
-		var validUntil, minimumTerm, terminatedAt sql.NullTime
-		var frameworkID, noticePeriod sql.NullInt64
+		var validUntil, minimumTerm, cancDate, cancActionDate, terminatedAt sql.NullTime
+		var frameworkID, noticePeriod, termMonths sql.NullInt64
 
 		if err := rows.Scan(&contract.ID, &contract.ContractNumber, &contract.Title,
 			&contract.Content, &contract.Conditions, &noticePeriod,
-			&minimumTerm, &contract.ValidFrom, &validUntil, &contract.Partner,
+			&minimumTerm, &termMonths, &cancDate, &cancActionDate,
+			&contract.ValidFrom, &validUntil, &contract.Partner,
 			&contract.Category, &contract.ContractType, &frameworkID,
 			&contract.IsTerminated, &terminatedAt, &contract.CreatedAt); err != nil {
 			continue
@@ -602,6 +643,16 @@ func getContractsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		if minimumTerm.Valid {
 			contract.MinimumTerm = &minimumTerm.Time
+		}
+		if termMonths.Valid {
+			n := int(termMonths.Int64)
+			contract.TermMonths = &n
+		}
+		if cancDate.Valid {
+			contract.CancellationDate = &cancDate.Time
+		}
+		if cancActionDate.Valid {
+			contract.CancellationActionDate = &cancActionDate.Time
 		}
 		if noticePeriod.Valid {
 			n := int(noticePeriod.Int64)
@@ -617,8 +668,7 @@ func getContractsHandler(w http.ResponseWriter, r *http.Request) {
 
 		contracts = append(contracts, contract)
 	}
-
-	json.NewEncoder(w).Encode(contracts)
+	return contracts
 }
 
 func getContractHandler(w http.ResponseWriter, r *http.Request) {
@@ -626,15 +676,16 @@ func getContractHandler(w http.ResponseWriter, r *http.Request) {
 	id := vars["id"]
 
 	var contract Contract
-	var validUntil, minimumTerm, terminatedAt sql.NullTime
-	var frameworkID, noticePeriod sql.NullInt64
+	var validUntil, minimumTerm, cancDate, cancActionDate, terminatedAt sql.NullTime
+	var frameworkID, noticePeriod, termMonths sql.NullInt64
 
 	err := db.QueryRow(`SELECT id, contract_number, title, content, conditions,
-		notice_period, minimum_term, valid_from, valid_until, partner, category,
+		notice_period, minimum_term, term_months, cancellation_date, cancellation_action_date,
+		valid_from, valid_until, partner, category,
 		contract_type, framework_contract_id, is_terminated, terminated_at, created_at
 		FROM contracts WHERE id = ?`, id).Scan(
 		&contract.ID, &contract.ContractNumber, &contract.Title, &contract.Content,
-		&contract.Conditions, &noticePeriod, &minimumTerm,
+		&contract.Conditions, &noticePeriod, &minimumTerm, &termMonths, &cancDate, &cancActionDate,
 		&contract.ValidFrom, &validUntil, &contract.Partner, &contract.Category,
 		&contract.ContractType, &frameworkID, &contract.IsTerminated,
 		&terminatedAt, &contract.CreatedAt)
@@ -649,6 +700,16 @@ func getContractHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if minimumTerm.Valid {
 		contract.MinimumTerm = &minimumTerm.Time
+	}
+	if termMonths.Valid {
+		n := int(termMonths.Int64)
+		contract.TermMonths = &n
+	}
+	if cancDate.Valid {
+		contract.CancellationDate = &cancDate.Time
+	}
+	if cancActionDate.Valid {
+		contract.CancellationActionDate = &cancActionDate.Time
 	}
 	if noticePeriod.Valid {
 		n := int(noticePeriod.Int64)
@@ -778,19 +839,16 @@ func getExpiringContractsHandler(w http.ResponseWriter, r *http.Request) {
 	var config Config
 	db.QueryRow("SELECT termination_warning_days FROM config WHERE id = 1").Scan(&config.TerminationWarningDays)
 
-	// Zeige Verträge, bei denen der letzte Kündigungstag (valid_until - notice_period Monate)
-	// innerhalb des Vorlaufzeitraums liegt, d.h. jetzt sofort Handlungsbedarf besteht.
+	// Zeige Verträge, bei denen die Kündigungsvornahme innerhalb des Vorlaufzeitraums liegt.
 	query := `SELECT id, contract_number, title, content, conditions, notice_period,
-		minimum_term, valid_from, valid_until, partner, category, contract_type,
+		minimum_term, term_months, cancellation_date, cancellation_action_date,
+		valid_from, valid_until, partner, category, contract_type,
 		framework_contract_id, is_terminated, terminated_at, created_at
 		FROM contracts
 		WHERE is_terminated = 0
-		AND valid_until IS NOT NULL
-		AND notice_period IS NOT NULL
-		AND notice_period > 0
-		AND datetime(valid_until, '-' || notice_period || ' months')
-			BETWEEN datetime('now') AND datetime('now', '+' || ? || ' days')
-		ORDER BY datetime(valid_until, '-' || notice_period || ' months') ASC`
+		AND cancellation_action_date IS NOT NULL
+		AND cancellation_action_date BETWEEN date('now') AND date('now', '+' || ? || ' days')
+		ORDER BY cancellation_action_date ASC`
 
 	rows, err := db.Query(query, config.TerminationWarningDays)
 	if err != nil {
@@ -799,42 +857,69 @@ func getExpiringContractsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var contracts []Contract
-	for rows.Next() {
-		var contract Contract
-		var validUntil, minimumTerm, terminatedAt sql.NullTime
-		var frameworkID, noticePeriod sql.NullInt64
+	contracts := scanContracts(rows)
+	json.NewEncoder(w).Encode(contracts)
+}
 
-		if err := rows.Scan(&contract.ID, &contract.ContractNumber, &contract.Title,
-			&contract.Content, &contract.Conditions, &noticePeriod,
-			&minimumTerm, &contract.ValidFrom, &validUntil, &contract.Partner,
-			&contract.Category, &contract.ContractType, &frameworkID,
-			&contract.IsTerminated, &terminatedAt, &contract.CreatedAt); err != nil {
+// calculateCancellationDates berechnet Kündigungstermin und Kündigungsvornahme für alle Verträge.
+func calculateCancellationDatesHandler(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query(`SELECT id, valid_from, notice_period, minimum_term, term_months
+		FROM contracts WHERE is_terminated = 0`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	today := time.Now().Truncate(24 * time.Hour)
+	updated := 0
+
+	for rows.Next() {
+		var id int
+		var validFrom time.Time
+		var noticePeriod, termMonths sql.NullInt64
+		var minimumTerm sql.NullTime
+
+		if err := rows.Scan(&id, &validFrom, &noticePeriod, &minimumTerm, &termMonths); err != nil {
 			continue
 		}
 
-		if validUntil.Valid {
-			contract.ValidUntil = &validUntil.Time
-		}
-		if minimumTerm.Valid {
-			contract.MinimumTerm = &minimumTerm.Time
-		}
-		if noticePeriod.Valid {
-			n := int(noticePeriod.Int64)
-			contract.NoticePeriod = &n
-		}
-		if frameworkID.Valid {
-			id := int(frameworkID.Int64)
-			contract.FrameworkContractID = &id
-		}
-		if terminatedAt.Valid {
-			contract.TerminatedAt = &terminatedAt.Time
+		// Alle Felder müssen gesetzt sein
+		if !noticePeriod.Valid || !minimumTerm.Valid || !termMonths.Valid || termMonths.Int64 <= 0 {
+			// Felder auf NULL setzen falls unvollständig
+			db.Exec("UPDATE contracts SET cancellation_date = NULL, cancellation_action_date = NULL WHERE id = ?", id)
+			continue
 		}
 
-		contracts = append(contracts, contract)
+		np := int(noticePeriod.Int64)
+		tm := int(termMonths.Int64)
+		minTerm := minimumTerm.Time
+
+		// Schritt 1: Erste Periodengrenze >= Mindestlaufzeit
+		termin := validFrom
+		for termin.Before(minTerm) {
+			termin = termin.AddDate(0, tm, 0)
+		}
+
+		// Schritt 2: Kündigungsvornahme muss in der Zukunft liegen
+		for termin.AddDate(0, -np, 0).Before(today) {
+			termin = termin.AddDate(0, tm, 0)
+		}
+
+		cancDate := termin
+		cancActionDate := termin.AddDate(0, -np, 0)
+
+		_, err = db.Exec("UPDATE contracts SET cancellation_date = ?, cancellation_action_date = ? WHERE id = ?",
+			cancDate, cancActionDate, id)
+		if err == nil {
+			updated++
+		}
 	}
 
-	json.NewEncoder(w).Encode(contracts)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": fmt.Sprintf("Kündigungstermine für %d Verträge berechnet", updated),
+		"updated": updated,
+	})
 }
 
 func getConfigHandler(w http.ResponseWriter, r *http.Request) {
@@ -904,6 +989,7 @@ func main() {
 
 	// Reporting routes
 	r.HandleFunc("/api/reports/expiring", authMiddleware(getExpiringContractsHandler)).Methods("GET")
+	r.HandleFunc("/api/contracts/calculate-dates", adminOnly(calculateCancellationDatesHandler)).Methods("POST")
 
 	// Config routes
 	r.HandleFunc("/api/config", authMiddleware(getConfigHandler)).Methods("GET")

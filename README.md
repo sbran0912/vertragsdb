@@ -88,6 +88,9 @@ Das Passwort sollte nach dem ersten Login geändert werden.
 | `valid_until` | DATETIME | Ende der Vertragslaufzeit (optional) |
 | `notice_period` | INTEGER | Kündigungsfrist in **Monaten** |
 | `minimum_term` | DATE | Mindestlaufzeit bis (Datum) |
+| `term_months` | INTEGER | Laufzeit in **Monaten** (Verlängerungsperiode) |
+| `cancellation_date` | DATE | Nächster Kündigungstermin (berechnet) |
+| `cancellation_action_date` | DATE | Kündigungsvornahme – spätester Handlungstag (berechnet) |
 | `content` | TEXT | Vertragsinhalt (Freitext) |
 | `conditions` | TEXT | Vertragskonditionen (Freitext) |
 | `is_terminated` | BOOLEAN | Wurde der Vertrag manuell beendet? |
@@ -124,6 +127,7 @@ Authorization: Bearer <token>
 | `POST` | `/api/contracts/{id}/documents` | admin | Dokument hochladen (PDF, max. 10 MB) |
 | `GET` | `/api/documents/{docId}/download` | viewer | Dokument herunterladen |
 | `GET` | `/api/reports/expiring` | viewer | Verträge mit ablaufender Kündigungsfrist |
+| `POST` | `/api/contracts/calculate-dates` | admin | Kündigungstermine für alle Verträge berechnen |
 | `GET` | `/api/users` | viewer | Alle Benutzer |
 | `POST` | `/api/users` | admin | Neuen Benutzer anlegen |
 | `PUT` | `/api/users/{id}` | admin | Benutzer bearbeiten (Benutzername, Rolle, Passwort optional) |
@@ -143,26 +147,70 @@ Folgende Schutzmechanismen sind serverseitig erzwungen:
 | Letzten Admin löschen | Nicht erlaubt |
 | Letzten Admin zum Viewer herabstufen | Nicht erlaubt |
 
+## Berechnung: Kündigungstermin und Kündigungsvornahme
+
+Per Button „Kündigungstermine berechnen" auf der Berichte-Seite werden für alle nicht-beendeten Verträge die Felder `cancellation_date` und `cancellation_action_date` berechnet und in der Datenbank gespeichert.
+
+### Eingangswerte
+
+| Feld | Beschreibung |
+|---|---|
+| `valid_from` | Vertragsbeginn |
+| `minimum_term` | Mindestlaufzeit bis (Datum) |
+| `term_months` | Laufzeit / Verlängerungsperiode (Monate) |
+| `notice_period` | Kündigungsfrist (Monate) |
+
+Alle vier Felder müssen gesetzt sein. Fehlt ein Wert, bleiben die berechneten Felder `NULL`.
+
+### Algorithmus
+
+```
+Schritt 1: Nächste Periodengrenze ab Mindestlaufzeit finden
+  Termin = valid_from
+  SOLANGE Termin < minimum_term:
+    Termin = Termin + term_months Monate
+
+Schritt 2: Prüfe ob Kündigungsvornahme noch in der Zukunft liegt
+  SOLANGE (Termin − notice_period Monate) < Heute:
+    Termin = Termin + term_months Monate
+
+Ergebnis:
+  Kündigungstermin    = Termin
+  Kündigungsvornahme  = Termin − notice_period Monate
+```
+
+### Beispiel
+
+| Eingabe | Wert |
+|---|---|
+| Gültig ab | 01.01.2024 |
+| Mindestlaufzeit bis | 01.01.2026 |
+| Laufzeit | 12 Monate |
+| Kündigungsfrist | 3 Monate |
+| Heute | 12.02.2026 |
+
+Perioden ab Vertragsbeginn: 01.01.2025 → 01.01.2026 → 01.01.2027 → ...
+
+1. Erste Grenze ≥ Mindestlaufzeit: **01.01.2026**
+2. Kündigungsvornahme wäre 01.10.2025 → liegt in der Vergangenheit → nächste Periode
+3. Nächste Grenze: **01.01.2027**, Kündigungsvornahme = 01.10.2026 → liegt in der Zukunft
+
+**Ergebnis: Kündigungstermin = 01.01.2027, Kündigungsvornahme = 01.10.2026**
+
 ## Bericht: Ablaufende Kündigungsfrist
 
-Der Bericht zeigt Verträge, bei denen **jetzt Handlungsbedarf** besteht – also Verträge, deren letzter Kündigungstag innerhalb des konfigurierten Vorlaufzeitraums liegt.
-
-**Berechnung:**
-```
-Letzter Kündigungstag = Gültig bis − Kündigungsfrist (Monate)
-```
+Der Bericht zeigt Verträge, bei denen **jetzt Handlungsbedarf** besteht – also Verträge, deren Kündigungsvornahme innerhalb des konfigurierten Vorlaufzeitraums liegt.
 
 Ein Vertrag erscheint im Bericht, wenn gilt:
 ```
-Heute ≤ Letzter Kündigungstag ≤ Heute + Vorlaufzeit
+Heute ≤ Kündigungsvornahme ≤ Heute + Vorlaufzeit
 ```
 
 Der Vorlaufzeitraum ist unter **Einstellungen → Vorlaufzeit für Kündigungsfristen** konfigurierbar (Standard: 90 Tage).
 
-Voraussetzungen für die Aufnahme in den Bericht:
-- Vertrag ist nicht manuell beendet (`is_terminated = 0`)
-- `gültig_bis` ist gesetzt
-- `Kündigungsfrist` ist gesetzt und größer 0
+Voraussetzungen:
+- Vertrag ist nicht manuell beendet
+- Kündigungstermine wurden berechnet (`cancellation_action_date` ist gesetzt)
 
 ## Datenbankmigrationen
 
@@ -171,6 +219,7 @@ Die Anwendung verwaltet das Datenbankschema selbst. Beim Start wird geprüft, ob
 | Version | Änderung |
 |---|---|
 | 2 | `notice_period`: TEXT → INTEGER (Monate); `minimum_term`: TEXT → DATE. Vorhandene Textwerte wie „3 Monate" werden automatisch zu `3` migriert. `minimum_term`-Textwerte werden auf `NULL` gesetzt und müssen manuell neu eingetragen werden. |
+| 3 | Neue Spalten: `term_months` (INTEGER), `cancellation_date` (DATE), `cancellation_action_date` (DATE). |
 
 ## Entwicklung
 

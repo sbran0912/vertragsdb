@@ -277,6 +277,18 @@ async function renderContractDetail(contract) {
                     <div class="detail-label">Mindestlaufzeit bis</div>
                     <div class="detail-value">${formatDate(contract.minimum_term)}</div>
                 </div>
+                <div class="detail-item">
+                    <div class="detail-label">Laufzeit</div>
+                    <div class="detail-value">${contract.term_months != null ? contract.term_months + ' Monate' : '-'}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Kündigungstermin</div>
+                    <div class="detail-value">${formatDate(contract.cancellation_date)}</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Kündigungsvornahme</div>
+                    <div class="detail-value"><strong>${formatDate(contract.cancellation_action_date)}</strong></div>
+                </div>
                 ${contract.is_terminated ? `
                 <div class="detail-item">
                     <div class="detail-label">Beendet am</div>
@@ -368,7 +380,25 @@ async function uploadDocument() {
 window.uploadDocument = uploadDocument;
 
 async function downloadDocument(docId) {
-    window.open(`/api/documents/${docId}/download`, '_blank');
+    try {
+        const response = await fetch(`/api/documents/${docId}/download`, {
+            headers: { 'Authorization': `Bearer ${state.token}` },
+        });
+        if (!response.ok) throw new Error('Download fehlgeschlagen');
+        const blob = await response.blob();
+        const disposition = response.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename=(.+)/);
+        const filename = match ? match[1] : 'dokument.pdf';
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Error downloading document:', error);
+        alert('Fehler beim Herunterladen des Dokuments');
+    }
 }
 
 window.downloadDocument = downloadDocument;
@@ -420,6 +450,7 @@ async function showContractForm(contractId = null) {
         form.elements['conditions'].value = contract.conditions || '';
         form.elements['notice_period'].value = contract.notice_period != null ? contract.notice_period : '';
         form.elements['minimum_term'].value = contract.minimum_term ? contract.minimum_term.split('T')[0] : '';
+        form.elements['term_months'].value = contract.term_months != null ? contract.term_months : '';
         if (contract.framework_contract_id) {
             form.elements['framework_contract_id'].value = contract.framework_contract_id;
         }
@@ -469,6 +500,7 @@ async function saveContract(formData) {
         conditions: formData.get('conditions'),
         notice_period: formData.get('notice_period') ? parseInt(formData.get('notice_period')) : null,
         minimum_term: formData.get('minimum_term') ? new Date(formData.get('minimum_term')).toISOString() : null,
+        term_months: formData.get('term_months') ? parseInt(formData.get('term_months')) : null,
         framework_contract_id: formData.get('framework_contract_id') ? parseInt(formData.get('framework_contract_id')) : null,
     };
     
@@ -689,20 +721,13 @@ async function showValidContracts() {
 
 window.showValidContracts = showValidContracts;
 
-function calcCancellationDeadline(validUntil, noticePeriodMonths) {
-    if (!validUntil || noticePeriodMonths == null) return null;
-    const date = new Date(validUntil);
-    date.setMonth(date.getMonth() - noticePeriodMonths);
-    return date;
-}
-
 async function showExpiringContracts() {
     try {
         const contracts = await api('/reports/expiring');
         const container = document.getElementById('expiring-contracts-list');
 
         if (!contracts || contracts.length === 0) {
-            container.innerHTML = '<p>Keine Verträge mit ablaufender Kündigungsfrist gefunden</p>';
+            container.innerHTML = '<p>Keine Verträge mit ablaufender Kündigungsfrist gefunden. Wurden die Kündigungstermine schon berechnet?</p>';
             return;
         }
 
@@ -713,24 +738,20 @@ async function showExpiringContracts() {
                         <th>Vertragsnummer</th>
                         <th>Titel</th>
                         <th>Partner</th>
-                        <th>Gültig bis</th>
-                        <th>Kündigungsfrist</th>
-                        <th>Letzter Kündigungstag</th>
+                        <th>Kündigungstermin</th>
+                        <th>Kündigungsvornahme</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${contracts.map(c => {
-                        const deadline = calcCancellationDeadline(c.valid_until, c.notice_period);
-                        return `
+                    ${contracts.map(c => `
                         <tr onclick="viewContract(${c.id})" style="cursor: pointer;">
                             <td>${escapeHtml(c.contract_number)}</td>
                             <td>${escapeHtml(c.title)}</td>
                             <td>${escapeHtml(c.partner)}</td>
-                            <td>${formatDate(c.valid_until)}</td>
-                            <td>${c.notice_period != null ? c.notice_period + ' Monate' : '-'}</td>
-                            <td><strong>${deadline ? deadline.toLocaleDateString('de-DE') : '-'}</strong></td>
-                        </tr>`;
-                    }).join('')}
+                            <td>${formatDate(c.cancellation_date)}</td>
+                            <td><strong>${formatDate(c.cancellation_action_date)}</strong></td>
+                        </tr>
+                    `).join('')}
                 </tbody>
             </table>
         `;
@@ -845,6 +866,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // Reports
     document.getElementById('show-valid-contracts').addEventListener('click', showValidContracts);
     document.getElementById('show-expiring-contracts').addEventListener('click', showExpiringContracts);
+    document.getElementById('calculate-dates-btn').addEventListener('click', async () => {
+        try {
+            const result = await api('/contracts/calculate-dates', { method: 'POST' });
+            document.getElementById('calculate-dates-result').textContent = result.message;
+        } catch (error) {
+            console.error('Error calculating dates:', error);
+            alert('Fehler bei der Berechnung: ' + error.message);
+        }
+    });
     
     // Check if already logged in
     if (loadAuth()) {

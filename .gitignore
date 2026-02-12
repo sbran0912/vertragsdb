@@ -1,5 +1,6 @@
 # Backend
 backend/vertragsdb
+uploads/
 
 # Frontend
 frontend/node_modules/

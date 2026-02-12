@@ -156,6 +156,10 @@
                                     <label for="minimum-term">Mindestlaufzeit bis</label>
                                     <input type="date" id="minimum-term" name="minimum_term">
                                 </div>
+                                <div class="form-group">
+                                    <label for="term-months">Laufzeit (Monate)</label>
+                                    <input type="number" id="term-months" name="term_months" min="1" placeholder="z.B. 12">
+                                </div>
                             </div>
 
                             <div class="form-actions">
@@ -173,6 +177,12 @@
                             <h3>Alle gültigen Verträge</h3>
                             <button id="show-valid-contracts" class="btn btn-primary">Anzeigen</button>
                             <div id="valid-contracts-list"></div>
+                        </div>
+
+                        <div class="report-section">
+                            <h3>Kündigungstermine</h3>
+                            <button id="calculate-dates-btn" class="btn btn-primary admin-only" style="margin-right:8px">Kündigungstermine berechnen</button>
+                            <span id="calculate-dates-result"></span>
                         </div>
 
                         <div class="report-section">
