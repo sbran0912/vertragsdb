@@ -59,9 +59,6 @@
                             <input type="text" id="search-input" placeholder="Suche nach Titel, Partner oder Inhalt...">
                             <select id="category-filter">
                                 <option value="">Alle Kategorien</option>
-                                <option value="IT">IT</option>
-                                <option value="Gebäude">Gebäude</option>
-                                <option value="Versicherungen">Versicherungen</option>
                             </select>
                             <label>
                                 <input type="checkbox" id="only-valid-filter"> Nur gültige Verträge
@@ -122,9 +119,7 @@
                                 <div class="form-group">
                                     <label for="category">Kategorie *</label>
                                     <select id="category" name="category" required>
-                                        <option value="IT">IT</option>
-                                        <option value="Gebäude">Gebäude</option>
-                                        <option value="Versicherungen">Versicherungen</option>
+                                        <option value="">Bitte wählen...</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
@@ -239,6 +234,30 @@
                             </div>
                             <button type="submit" class="btn btn-primary">Speichern</button>
                         </form>
+
+                        <hr style="margin: 2rem 0;">
+                        <div class="page-header">
+                            <h3>Kategorien verwalten</h3>
+                            <button id="new-category-btn" class="btn btn-primary">Neue Kategorie</button>
+                        </div>
+                        <div id="categories-list"></div>
+
+                        <!-- Category Modal -->
+                        <div id="category-modal" class="modal hidden">
+                            <div class="modal-content">
+                                <h3 id="category-modal-title">Neue Kategorie</h3>
+                                <form id="category-form">
+                                    <div class="form-group">
+                                        <label for="category-name">Kategoriename *</label>
+                                        <input type="text" id="category-name" name="name" required>
+                                    </div>
+                                    <div class="form-actions">
+                                        <button type="submit" id="category-submit-btn" class="btn btn-primary">Erstellen</button>
+                                        <button type="button" id="cancel-category-btn" class="btn btn-secondary">Abbrechen</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

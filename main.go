@@ -64,6 +64,11 @@ type Config struct {
 	TerminationWarningDays int `json:"termination_warning_days"`
 }
 
+type Category struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
 type Claims struct {
 	UserID   int    `json:"user_id"`
 	Username string `json:"username"`
@@ -148,7 +153,7 @@ func migrateDB() error {
 	var version int
 	db.QueryRow("PRAGMA user_version").Scan(&version)
 
-	if version >= 3 {
+	if version >= 4 {
 		return nil
 	}
 
@@ -245,6 +250,35 @@ func migrateDB() error {
 			db.Exec(col) // Fehler ignorieren falls Spalte schon existiert
 		}
 		_, err = db.Exec("PRAGMA user_version = 3")
+		if err != nil {
+			return err
+		}
+		version = 3
+	}
+
+	// Migration v4: Kategorien-Tabelle
+	if version < 4 {
+		_, err = db.Exec(`CREATE TABLE IF NOT EXISTS categories (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT UNIQUE NOT NULL
+		)`)
+		if err != nil {
+			return fmt.Errorf("migration v4 create categories: %w", err)
+		}
+
+		for _, cat := range []string{"IT", "Gebäude", "Versicherungen"} {
+			db.Exec("INSERT OR IGNORE INTO categories (name) VALUES (?)", cat)
+		}
+
+		// Kategorien aus bestehenden Verträgen übernehmen
+		_, err = db.Exec(`INSERT OR IGNORE INTO categories (name)
+			SELECT DISTINCT category FROM contracts
+			WHERE category NOT IN ('IT', 'Gebäude', 'Versicherungen') AND category != ''`)
+		if err != nil {
+			return fmt.Errorf("migration v4 seed from contracts: %w", err)
+		}
+
+		_, err = db.Exec("PRAGMA user_version = 4")
 		if err != nil {
 			return err
 		}
@@ -959,6 +993,117 @@ func updateConfigHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(config)
 }
 
+// Category handlers
+
+func getCategoriesHandler(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query("SELECT id, name FROM categories ORDER BY name")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var categories []Category
+	for rows.Next() {
+		var cat Category
+		if err := rows.Scan(&cat.ID, &cat.Name); err != nil {
+			continue
+		}
+		categories = append(categories, cat)
+	}
+
+	json.NewEncoder(w).Encode(categories)
+}
+
+func createCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	var cat Category
+	if err := json.NewDecoder(r.Body).Decode(&cat); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cat.Name = strings.TrimSpace(cat.Name)
+	if cat.Name == "" {
+		http.Error(w, "Kategoriename darf nicht leer sein", http.StatusBadRequest)
+		return
+	}
+
+	result, err := db.Exec("INSERT INTO categories (name) VALUES (?)", cat.Name)
+	if err != nil {
+		http.Error(w, "Kategorie existiert bereits", http.StatusConflict)
+		return
+	}
+
+	id, _ := result.LastInsertId()
+	cat.ID = int(id)
+
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(cat)
+}
+
+func updateCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	var cat Category
+	if err := json.NewDecoder(r.Body).Decode(&cat); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cat.Name = strings.TrimSpace(cat.Name)
+	if cat.Name == "" {
+		http.Error(w, "Kategoriename darf nicht leer sein", http.StatusBadRequest)
+		return
+	}
+
+	var oldName string
+	err := db.QueryRow("SELECT name FROM categories WHERE id = ?", id).Scan(&oldName)
+	if err != nil {
+		http.Error(w, "Kategorie nicht gefunden", http.StatusNotFound)
+		return
+	}
+
+	_, err = db.Exec("UPDATE categories SET name = ? WHERE id = ?", cat.Name, id)
+	if err != nil {
+		http.Error(w, "Kategoriename existiert bereits", http.StatusConflict)
+		return
+	}
+
+	// Verträge mit altem Namen aktualisieren
+	db.Exec("UPDATE contracts SET category = ? WHERE category = ?", cat.Name, oldName)
+
+	cat.ID = mustAtoi(id)
+	json.NewEncoder(w).Encode(cat)
+}
+
+func deleteCategoryHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	var catName string
+	err := db.QueryRow("SELECT name FROM categories WHERE id = ?", id).Scan(&catName)
+	if err != nil {
+		http.Error(w, "Kategorie nicht gefunden", http.StatusNotFound)
+		return
+	}
+
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM contracts WHERE category = ?", catName).Scan(&count)
+	if count > 0 {
+		http.Error(w, fmt.Sprintf("Kategorie wird von %d Vertrag/Verträgen verwendet", count), http.StatusConflict)
+		return
+	}
+
+	_, err = db.Exec("DELETE FROM categories WHERE id = ?", id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func mustAtoi(s string) int {
 	i, _ := strconv.Atoi(s)
 	return i
@@ -1000,6 +1145,12 @@ func main() {
 	// Config routes
 	r.HandleFunc("/api/config", authMiddleware(getConfigHandler)).Methods("GET")
 	r.HandleFunc("/api/config", adminOnly(updateConfigHandler)).Methods("PUT")
+
+	// Category routes
+	r.HandleFunc("/api/categories", authMiddleware(getCategoriesHandler)).Methods("GET")
+	r.HandleFunc("/api/categories", adminOnly(createCategoryHandler)).Methods("POST")
+	r.HandleFunc("/api/categories/{id}", adminOnly(updateCategoryHandler)).Methods("PUT")
+	r.HandleFunc("/api/categories/{id}", adminOnly(deleteCategoryHandler)).Methods("DELETE")
 
 	// Serve frontend files
 	r.PathPrefix("/").Handler(http.FileServer(http.Dir("frontend/dist")))

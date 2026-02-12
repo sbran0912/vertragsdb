@@ -104,6 +104,7 @@ function showContent(contentName) {
         loadUsers();
     } else if (contentName === 'settings') {
         loadSettings();
+        loadCategoriesAdmin();
     }
 }
 
@@ -679,6 +680,141 @@ async function saveSettings(formData) {
     }
 }
 
+// Categories
+async function loadCategories() {
+    try {
+        const categories = await api('/categories');
+        populateCategoryDropdowns(categories || []);
+        return categories || [];
+    } catch (error) {
+        console.error('Error loading categories:', error);
+        return [];
+    }
+}
+
+function populateCategoryDropdowns(categories) {
+    const filterSelect = document.getElementById('category-filter');
+    const currentFilterValue = filterSelect.value;
+    filterSelect.innerHTML = '<option value="">Alle Kategorien</option>' +
+        categories.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+    filterSelect.value = currentFilterValue;
+
+    const formSelect = document.getElementById('category');
+    const currentFormValue = formSelect.value;
+    formSelect.innerHTML = '<option value="">Bitte wählen...</option>' +
+        categories.map(c => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+    formSelect.value = currentFormValue;
+}
+
+async function loadCategoriesAdmin() {
+    try {
+        const categories = await api('/categories');
+        renderCategoriesAdmin(categories || []);
+    } catch (error) {
+        console.error('Error loading categories:', error);
+    }
+}
+
+function renderCategoriesAdmin(categories) {
+    const container = document.getElementById('categories-list');
+
+    if (!categories || categories.length === 0) {
+        container.innerHTML = '<p>Keine Kategorien vorhanden</p>';
+        return;
+    }
+
+    container.innerHTML = `
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Aktionen</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${categories.map(cat => `
+                    <tr>
+                        <td>${escapeHtml(cat.name)}</td>
+                        <td>
+                            <button onclick="editCategory(${cat.id})" class="btn btn-secondary" style="margin-right:4px">Bearbeiten</button>
+                            <button onclick="deleteCategory(${cat.id}, '${escapeHtml(cat.name)}')" class="btn btn-danger">Löschen</button>
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
+function openCategoryModal({ title, submitLabel, categoryId, name }) {
+    const form = document.getElementById('category-form');
+    form.reset();
+    form.dataset.categoryId = categoryId || '';
+
+    document.getElementById('category-modal-title').textContent = title;
+    document.getElementById('category-submit-btn').textContent = submitLabel;
+
+    if (name) document.getElementById('category-name').value = name;
+
+    document.getElementById('category-modal').classList.remove('hidden');
+}
+
+async function editCategory(categoryId) {
+    try {
+        const categories = await api('/categories');
+        const cat = categories.find(c => c.id === categoryId);
+        if (!cat) return;
+        openCategoryModal({
+            title: 'Kategorie bearbeiten',
+            submitLabel: 'Speichern',
+            categoryId: cat.id,
+            name: cat.name,
+        });
+    } catch (error) {
+        console.error('Error loading category:', error);
+    }
+}
+window.editCategory = editCategory;
+
+async function deleteCategory(categoryId, name) {
+    if (!confirm(`Kategorie "${name}" wirklich löschen?`)) return;
+    try {
+        await api(`/categories/${categoryId}`, { method: 'DELETE' });
+        loadCategoriesAdmin();
+        loadCategories();
+    } catch (error) {
+        console.error('Error deleting category:', error);
+        alert('Fehler beim Löschen: ' + error.message);
+    }
+}
+window.deleteCategory = deleteCategory;
+
+async function saveCategory(formData) {
+    const form = document.getElementById('category-form');
+    const categoryId = form.dataset.categoryId;
+    const data = { name: formData.get('name') };
+
+    try {
+        if (categoryId) {
+            await api(`/categories/${categoryId}`, {
+                method: 'PUT',
+                body: JSON.stringify(data),
+            });
+        } else {
+            await api('/categories', {
+                method: 'POST',
+                body: JSON.stringify(data),
+            });
+        }
+        document.getElementById('category-modal').classList.add('hidden');
+        loadCategoriesAdmin();
+        loadCategories();
+    } catch (error) {
+        console.error('Error saving category:', error);
+        alert('Fehler beim Speichern: ' + error.message);
+    }
+}
+
 // Reports
 async function showValidContracts() {
     try {
@@ -788,6 +924,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             saveAuth(response.token, response.user);
             updateUIForRole();
+            loadCategories();
             showPage('main');
             showContent('contracts');
         } catch (error) {
@@ -862,6 +999,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const formData = new FormData(e.target);
         await saveSettings(formData);
     });
+
+    // Category management
+    document.getElementById('new-category-btn').addEventListener('click', () => {
+        openCategoryModal({
+            title: 'Neue Kategorie',
+            submitLabel: 'Erstellen',
+        });
+    });
+
+    document.getElementById('cancel-category-btn').addEventListener('click', () => {
+        document.getElementById('category-modal').classList.add('hidden');
+    });
+
+    document.getElementById('category-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        await saveCategory(formData);
+    });
     
     // Reports
     document.getElementById('show-valid-contracts').addEventListener('click', showValidContracts);
@@ -879,6 +1034,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Check if already logged in
     if (loadAuth()) {
         updateUIForRole();
+        loadCategories();
         showPage('main');
         showContent('contracts');
     } else {

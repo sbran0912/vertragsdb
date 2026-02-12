@@ -19,8 +19,9 @@ Eine webbasierte Anwendung zur Verwaltung von Verträgen. Verträge können erfa
 - **Rahmenverträge** – Einzelverträge können einem Rahmenvertrag zugeordnet werden
 - **Dokumentenverwaltung** – PDF-Dokumente können je Vertrag hochgeladen und heruntergeladen werden
 - **Benutzerverwaltung** – Anlegen, Bearbeiten (inkl. Passwortvergabe) und Löschen von Benutzern; Rollen `admin` (Lesen + Schreiben) und `viewer` (nur Lesen)
+- **Kategorieverwaltung** – Vertragskategorien über die GUI anlegen, umbenennen und löschen
 - **Berichte** – Alle gültigen Verträge; Verträge mit ablaufender Kündigungsfrist
-- **Einstellungen** – Vorlaufzeit für Kündigungsfristen (in Tagen) konfigurierbar
+- **Einstellungen** – Vorlaufzeit für Kündigungsfristen (in Tagen) konfigurierbar; Kategorieverwaltung
 
 ## Projektstruktur
 
@@ -81,7 +82,7 @@ Das Passwort sollte nach dem ersten Login geändert werden.
 | `contract_number` | TEXT | Eindeutige Vertragsnummer (automatisch: `V000001`, `V000002`, …) |
 | `title` | TEXT | Vertragstitel |
 | `partner` | TEXT | Vertragspartner |
-| `category` | TEXT | Kategorie (`IT`, `Gebäude`, `Versicherungen`) |
+| `category` | TEXT | Kategorie (dynamisch aus Tabelle `categories`) |
 | `contract_type` | TEXT | `framework` (Rahmenvertrag) oder `individual` (Einzelvertrag) |
 | `framework_contract_id` | INTEGER | Fremdschlüssel auf übergeordneten Rahmenvertrag (optional) |
 | `valid_from` | DATETIME | Beginn der Vertragslaufzeit |
@@ -96,6 +97,15 @@ Das Passwort sollte nach dem ersten Login geändert werden.
 | `is_terminated` | BOOLEAN | Wurde der Vertrag manuell beendet? |
 | `terminated_at` | DATETIME | Zeitpunkt der manuellen Beendigung |
 | `created_at` | DATETIME | Anlagedatum |
+
+### Kategorien (`categories`)
+
+| Feld | Typ | Beschreibung |
+|---|---|---|
+| `id` | INTEGER | Primärschlüssel (Auto-Increment) |
+| `name` | TEXT | Kategoriename (eindeutig) |
+
+Kategorien werden unter **Einstellungen → Kategorien verwalten** gepflegt. Beim Umbenennen einer Kategorie werden alle Verträge mit dem alten Namen automatisch aktualisiert. Eine Kategorie kann nur gelöscht werden, wenn sie von keinem Vertrag verwendet wird.
 
 ### Konfiguration (`config`)
 
@@ -132,6 +142,10 @@ Authorization: Bearer <token>
 | `POST` | `/api/users` | admin | Neuen Benutzer anlegen |
 | `PUT` | `/api/users/{id}` | admin | Benutzer bearbeiten (Benutzername, Rolle, Passwort optional) |
 | `DELETE` | `/api/users/{id}` | admin | Benutzer löschen |
+| `GET` | `/api/categories` | viewer | Alle Kategorien abrufen |
+| `POST` | `/api/categories` | admin | Neue Kategorie anlegen |
+| `PUT` | `/api/categories/{id}` | admin | Kategorie umbenennen (kaskadiert auf Verträge) |
+| `DELETE` | `/api/categories/{id}` | admin | Kategorie löschen (nur wenn unbenutzt) |
 | `GET` | `/api/config` | viewer | Konfiguration abrufen |
 | `PUT` | `/api/config` | admin | Konfiguration speichern |
 
@@ -220,6 +234,7 @@ Die Anwendung verwaltet das Datenbankschema selbst. Beim Start wird geprüft, ob
 |---|---|
 | 2 | `notice_period`: TEXT → INTEGER (Monate); `minimum_term`: TEXT → DATE. Vorhandene Textwerte wie „3 Monate" werden automatisch zu `3` migriert. `minimum_term`-Textwerte werden auf `NULL` gesetzt und müssen manuell neu eingetragen werden. |
 | 3 | Neue Spalten: `term_months` (INTEGER), `cancellation_date` (DATE), `cancellation_action_date` (DATE). |
+| 4 | Neue Tabelle `categories` mit Seed der bestehenden Kategorien (IT, Gebäude, Versicherungen) sowie aller bereits in Verträgen genutzten Kategoriewerte. |
 
 ## Entwicklung
 
