@@ -4,13 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build --base=./",
     "preview": "vite preview"
   },
   "devDependencies": {
     "vite": "^7.0.0"
-  },
-  "dependencies": {
-    "htmx.org": "^1.9.10"
   }
 }

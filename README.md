@@ -74,6 +74,15 @@ Das Passwort sollte nach dem ersten Login geändert werden.
 
 ## Datenmodell
 
+### Benutzer (`users`)
+
+| Feld | Typ | Beschreibung |
+|---|---|---|
+| `id` | INTEGER | Primärschlüssel |
+| `username` | TEXT | Benutzername (eindeutig) |
+| `password` | TEXT | Passwort-Hash (bcrypt) |
+| `role` | TEXT | `admin` oder `viewer` |
+
 ### Vertrag (`contracts`)
 
 | Feld | Typ | Beschreibung |

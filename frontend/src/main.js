@@ -1,7 +1,5 @@
-import htmx from 'htmx.org';
-
-// Make htmx available globally
-window.htmx = htmx;
+// Configuration
+const API_BASE = '/vertragsdb/api';
 
 // State management
 const state = {
@@ -22,7 +20,7 @@ async function api(endpoint, options = {}) {
         headers['Authorization'] = `Bearer ${state.token}`;
     }
 
-    const response = await fetch(`/api${endpoint}`, {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
         ...options,
         headers,
     });
@@ -357,7 +355,7 @@ async function uploadDocument() {
     formData.append('document', file);
     
     try {
-        const response = await fetch(`/api/contracts/${state.currentContract.id}/documents`, {
+        const response = await fetch(`${API_BASE}/contracts/${state.currentContract.id}/documents`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${state.token}`,
@@ -381,7 +379,7 @@ window.uploadDocument = uploadDocument;
 
 async function downloadDocument(docId) {
     try {
-        const response = await fetch(`/api/documents/${docId}/download`, {
+        const response = await fetch(`${API_BASE}/documents/${docId}/download`, {
             headers: { 'Authorization': `Bearer ${state.token}` },
         });
         if (!response.ok) throw new Error('Download fehlgeschlagen');

@@ -118,6 +118,10 @@ func initDB() error {
 		FOREIGN KEY (contract_id) REFERENCES contracts(id)
 	);
 
+	CREATE TABLE IF NOT EXISTS categories (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT UNIQUE NOT NULL
+	);
 	`
 
 	_, err = db.Exec(schema)
@@ -1077,42 +1081,45 @@ func main() {
 	}
 	defer db.Close()
 
+	basePath := "/vertragsdb"
 	r := mux.NewRouter()
+	api := r.PathPrefix(basePath + "/api").Subrouter()
 
 	// Public routes
-	r.HandleFunc("/api/login", loginHandler).Methods("POST")
+	api.HandleFunc("/login", loginHandler).Methods("POST")
 
 	// Protected routes
-	r.HandleFunc("/api/users", authMiddleware(getUsersHandler)).Methods("GET")
-	r.HandleFunc("/api/users", adminOnly(createUserHandler)).Methods("POST")
-	r.HandleFunc("/api/users/{id}", adminOnly(updateUserHandler)).Methods("PUT")
-	r.HandleFunc("/api/users/{id}", adminOnly(deleteUserHandler)).Methods("DELETE")
+	api.HandleFunc("/users", authMiddleware(getUsersHandler)).Methods("GET")
+	api.HandleFunc("/users", adminOnly(createUserHandler)).Methods("POST")
+	api.HandleFunc("/users/{id}", adminOnly(updateUserHandler)).Methods("PUT")
+	api.HandleFunc("/users/{id}", adminOnly(deleteUserHandler)).Methods("DELETE")
 
 	// Contract routes
-	r.HandleFunc("/api/contracts", authMiddleware(getContractsHandler)).Methods("GET")
-	r.HandleFunc("/api/contracts", adminOnly(createContractHandler)).Methods("POST")
-	r.HandleFunc("/api/contracts/{id}", authMiddleware(getContractHandler)).Methods("GET")
-	r.HandleFunc("/api/contracts/{id}", adminOnly(updateContractHandler)).Methods("PUT")
-	r.HandleFunc("/api/contracts/{id}/terminate", adminOnly(terminateContractHandler)).Methods("POST")
+	api.HandleFunc("/contracts", authMiddleware(getContractsHandler)).Methods("GET")
+	api.HandleFunc("/contracts", adminOnly(createContractHandler)).Methods("POST")
+	api.HandleFunc("/contracts/{id}", authMiddleware(getContractHandler)).Methods("GET")
+	api.HandleFunc("/contracts/{id}", adminOnly(updateContractHandler)).Methods("PUT")
+	api.HandleFunc("/contracts/{id}/terminate", adminOnly(terminateContractHandler)).Methods("POST")
 
 	// Document routes
-	r.HandleFunc("/api/contracts/{id}/documents", authMiddleware(getDocumentsHandler)).Methods("GET")
-	r.HandleFunc("/api/contracts/{id}/documents", adminOnly(uploadDocumentHandler)).Methods("POST")
-	r.HandleFunc("/api/documents/{docId}/download", authMiddleware(downloadDocumentHandler)).Methods("GET")
+	api.HandleFunc("/contracts/{id}/documents", authMiddleware(getDocumentsHandler)).Methods("GET")
+	api.HandleFunc("/contracts/{id}/documents", adminOnly(uploadDocumentHandler)).Methods("POST")
+	api.HandleFunc("/documents/{docId}/download", authMiddleware(downloadDocumentHandler)).Methods("GET")
 
 	// Reporting routes
-	r.HandleFunc("/api/reports/expiring", authMiddleware(getExpiringContractsHandler)).Methods("GET")
-	r.HandleFunc("/api/contracts/calculate-dates", adminOnly(calculateCancellationDatesHandler)).Methods("POST")
+	api.HandleFunc("/reports/expiring", authMiddleware(getExpiringContractsHandler)).Methods("GET")
+	api.HandleFunc("/contracts/calculate-dates", adminOnly(calculateCancellationDatesHandler)).Methods("POST")
 
 	// Category routes
-	r.HandleFunc("/api/categories", authMiddleware(getCategoriesHandler)).Methods("GET")
-	r.HandleFunc("/api/categories", adminOnly(createCategoryHandler)).Methods("POST")
-	r.HandleFunc("/api/categories/{id}", adminOnly(updateCategoryHandler)).Methods("PUT")
-	r.HandleFunc("/api/categories/{id}", adminOnly(deleteCategoryHandler)).Methods("DELETE")
+	api.HandleFunc("/categories", authMiddleware(getCategoriesHandler)).Methods("GET")
+	api.HandleFunc("/categories", adminOnly(createCategoryHandler)).Methods("POST")
+	api.HandleFunc("/categories/{id}", adminOnly(updateCategoryHandler)).Methods("PUT")
+	api.HandleFunc("/categories/{id}", adminOnly(deleteCategoryHandler)).Methods("DELETE")
 
 	// Serve frontend files
-	r.PathPrefix("/").Handler(http.FileServer(http.Dir("frontend/dist")))
+	r.PathPrefix(basePath + "/").Handler(
+		http.StripPrefix(basePath, http.FileServer(http.Dir("frontend/dist"))))
 
-	log.Println("Server starting on :8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
+	log.Println("Server starting on :8091")
+	log.Fatal(http.ListenAndServe(":8091", r))
 }
