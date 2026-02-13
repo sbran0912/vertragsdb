@@ -1,10 +1,9 @@
 module vertragsdb
 
-go 1.21
+go 1.25
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.2.0
-	github.com/gorilla/mux v1.8.1
 	golang.org/x/crypto v0.18.0
 	modernc.org/sqlite v1.28.0
 )

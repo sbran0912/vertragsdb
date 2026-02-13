@@ -6,9 +6,9 @@ Eine webbasierte Anwendung zur Verwaltung von Verträgen. Verträge können erfa
 
 | Komponente | Technologie |
 |---|---|
-| Backend | Go 1.21+ |
+| Backend | Go 1.22+ |
 | Datenbank | SQLite (`modernc.org/sqlite`) |
-| Routing | Gorilla Mux |
+| Routing | `net/http` ServeMux (stdlib) |
 | Authentifizierung | JWT (HS256) + bcrypt |
 | Frontend | Vanilla JavaScript |
 | Build-Tool | Vite 7 |
@@ -45,7 +45,7 @@ vertragsdb/
 
 ### Voraussetzungen
 
-- Go 1.21 oder neuer (getestet mit Go 1.25)
+- Go 1.22 oder neuer (getestet mit Go 1.25)
 - Node.js 18 oder neuer (für den Frontend-Build)
 
 ### Frontend bauen

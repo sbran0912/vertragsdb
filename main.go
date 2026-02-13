@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/gorilla/mux"
 	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 )
@@ -432,8 +431,7 @@ func getUsersHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func updateUserHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id := vars["id"]
+	id := r.PathValue("id")
 
 	var input struct {
 		Username string `json:"username"`
@@ -479,8 +477,7 @@ func updateUserHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteUserHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id := vars["id"]
+	id := r.PathValue("id")
 
 	// Selbstlöschung verhindern
 	if r.Header.Get("X-User-ID") == id {
@@ -572,8 +569,7 @@ func createContractHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func updateContractHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id := vars["id"]
+	id := r.PathValue("id")
 
 	var contract Contract
 	if err := json.NewDecoder(r.Body).Decode(&contract); err != nil {
@@ -699,8 +695,7 @@ func scanContracts(rows *sql.Rows) []Contract {
 }
 
 func getContractHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id := vars["id"]
+	id := r.PathValue("id")
 
 	var contract Contract
 	var validUntil, minimumTerm, cancDate, cancActionDate, terminatedAt sql.NullTime
@@ -754,8 +749,7 @@ func getContractHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func terminateContractHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id := vars["id"]
+	id := r.PathValue("id")
 
 	now := time.Now()
 	_, err := db.Exec("UPDATE contracts SET is_terminated = 1, terminated_at = ? WHERE id = ?", now, id)
@@ -768,8 +762,7 @@ func terminateContractHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func uploadDocumentHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	contractID := vars["id"]
+	contractID := r.PathValue("id")
 
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -822,8 +815,7 @@ func uploadDocumentHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func getDocumentsHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	contractID := vars["id"]
+	contractID := r.PathValue("id")
 
 	rows, err := db.Query("SELECT id, contract_id, filename, file_path, uploaded_at FROM documents WHERE contract_id = ?", contractID)
 	if err != nil {
@@ -845,8 +837,7 @@ func getDocumentsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func downloadDocumentHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	docID := vars["docId"]
+	docID := r.PathValue("docId")
 
 	var doc Document
 	err := db.QueryRow("SELECT id, filename, file_path FROM documents WHERE id = ?", docID).
@@ -1008,8 +999,7 @@ func createCategoryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func updateCategoryHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id := vars["id"]
+	id := r.PathValue("id")
 
 	var cat Category
 	if err := json.NewDecoder(r.Body).Decode(&cat); err != nil {
@@ -1044,8 +1034,7 @@ func updateCategoryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func deleteCategoryHandler(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id := vars["id"]
+	id := r.PathValue("id")
 
 	var catName string
 	err := db.QueryRow("SELECT name FROM categories WHERE id = ?", id).Scan(&catName)
@@ -1081,44 +1070,42 @@ func main() {
 	}
 	defer db.Close()
 
-	basePath := "/vertragsdb"
-	r := mux.NewRouter()
-	api := r.PathPrefix(basePath + "/api").Subrouter()
+	r := http.NewServeMux()
+	base := "/vertragsdb/api"
 
 	// Public routes
-	api.HandleFunc("/login", loginHandler).Methods("POST")
+	r.HandleFunc("POST "+base+"/login", loginHandler)
 
-	// Protected routes
-	api.HandleFunc("/users", authMiddleware(getUsersHandler)).Methods("GET")
-	api.HandleFunc("/users", adminOnly(createUserHandler)).Methods("POST")
-	api.HandleFunc("/users/{id}", adminOnly(updateUserHandler)).Methods("PUT")
-	api.HandleFunc("/users/{id}", adminOnly(deleteUserHandler)).Methods("DELETE")
+	// User routes
+	r.HandleFunc("GET "+base+"/users", authMiddleware(getUsersHandler))
+	r.HandleFunc("POST "+base+"/users", adminOnly(createUserHandler))
+	r.HandleFunc("PUT "+base+"/users/{id}", adminOnly(updateUserHandler))
+	r.HandleFunc("DELETE "+base+"/users/{id}", adminOnly(deleteUserHandler))
 
 	// Contract routes
-	api.HandleFunc("/contracts", authMiddleware(getContractsHandler)).Methods("GET")
-	api.HandleFunc("/contracts", adminOnly(createContractHandler)).Methods("POST")
-	api.HandleFunc("/contracts/{id}", authMiddleware(getContractHandler)).Methods("GET")
-	api.HandleFunc("/contracts/{id}", adminOnly(updateContractHandler)).Methods("PUT")
-	api.HandleFunc("/contracts/{id}/terminate", adminOnly(terminateContractHandler)).Methods("POST")
+	r.HandleFunc("GET "+base+"/contracts", authMiddleware(getContractsHandler))
+	r.HandleFunc("POST "+base+"/contracts", adminOnly(createContractHandler))
+	r.HandleFunc("POST "+base+"/contracts/calculate-dates", adminOnly(calculateCancellationDatesHandler))
+	r.HandleFunc("GET "+base+"/contracts/{id}", authMiddleware(getContractHandler))
+	r.HandleFunc("PUT "+base+"/contracts/{id}", adminOnly(updateContractHandler))
+	r.HandleFunc("POST "+base+"/contracts/{id}/terminate", adminOnly(terminateContractHandler))
 
 	// Document routes
-	api.HandleFunc("/contracts/{id}/documents", authMiddleware(getDocumentsHandler)).Methods("GET")
-	api.HandleFunc("/contracts/{id}/documents", adminOnly(uploadDocumentHandler)).Methods("POST")
-	api.HandleFunc("/documents/{docId}/download", authMiddleware(downloadDocumentHandler)).Methods("GET")
+	r.HandleFunc("GET "+base+"/contracts/{id}/documents", authMiddleware(getDocumentsHandler))
+	r.HandleFunc("POST "+base+"/contracts/{id}/documents", adminOnly(uploadDocumentHandler))
+	r.HandleFunc("GET "+base+"/documents/{docId}/download", authMiddleware(downloadDocumentHandler))
 
 	// Reporting routes
-	api.HandleFunc("/reports/expiring", authMiddleware(getExpiringContractsHandler)).Methods("GET")
-	api.HandleFunc("/contracts/calculate-dates", adminOnly(calculateCancellationDatesHandler)).Methods("POST")
+	r.HandleFunc("GET "+base+"/reports/expiring", authMiddleware(getExpiringContractsHandler))
 
 	// Category routes
-	api.HandleFunc("/categories", authMiddleware(getCategoriesHandler)).Methods("GET")
-	api.HandleFunc("/categories", adminOnly(createCategoryHandler)).Methods("POST")
-	api.HandleFunc("/categories/{id}", adminOnly(updateCategoryHandler)).Methods("PUT")
-	api.HandleFunc("/categories/{id}", adminOnly(deleteCategoryHandler)).Methods("DELETE")
+	r.HandleFunc("GET "+base+"/categories", authMiddleware(getCategoriesHandler))
+	r.HandleFunc("POST "+base+"/categories", adminOnly(createCategoryHandler))
+	r.HandleFunc("PUT "+base+"/categories/{id}", adminOnly(updateCategoryHandler))
+	r.HandleFunc("DELETE "+base+"/categories/{id}", adminOnly(deleteCategoryHandler))
 
 	// Serve frontend files
-	r.PathPrefix(basePath + "/").Handler(
-		http.StripPrefix(basePath, http.FileServer(http.Dir("frontend/dist"))))
+	r.Handle("GET /vertragsdb/", http.StripPrefix("/vertragsdb", http.FileServer(http.Dir("frontend/dist"))))
 
 	log.Println("Server starting on :8091")
 	log.Fatal(http.ListenAndServe(":8091", r))
