@@ -10,7 +10,7 @@ Eine webbasierte Anwendung zur Verwaltung von Verträgen. Verträge können erfa
 | Datenbank | SQLite (`modernc.org/sqlite`) |
 | Routing | Gorilla Mux |
 | Authentifizierung | JWT (HS256) + bcrypt |
-| Frontend | Vanilla JavaScript, HTMX |
+| Frontend | Vanilla JavaScript |
 | Build-Tool | Vite 7 |
 
 ## Funktionsübersicht
@@ -62,7 +62,7 @@ npm run build
 go run main.go
 ```
 
-Die Anwendung ist anschließend unter **http://localhost:8080** erreichbar.
+Die Anwendung ist anschließend unter **http://localhost:8091/vertragsdb/** erreichbar.
 
 ### Standard-Zugangsdaten
 
@@ -107,6 +107,16 @@ Das Passwort sollte nach dem ersten Login geändert werden.
 | `terminated_at` | DATETIME | Zeitpunkt der manuellen Beendigung |
 | `created_at` | DATETIME | Anlagedatum |
 
+### Dokumente (`documents`)
+
+| Feld | Typ | Beschreibung |
+|---|---|---|
+| `id` | INTEGER | Primärschlüssel |
+| `contract_id` | INTEGER | Fremdschlüssel auf `contracts` |
+| `filename` | TEXT | Originaler Dateiname |
+| `file_path` | TEXT | Pfad zur gespeicherten Datei im `uploads/`-Verzeichnis |
+| `uploaded_at` | DATETIME | Upload-Zeitpunkt |
+
 ### Kategorien (`categories`)
 
 | Feld | Typ | Beschreibung |
@@ -120,7 +130,7 @@ Kategorien werden unter **Einstellungen → Kategorien verwalten** gepflegt. Bei
 
 ### Authentifizierung
 
-Alle Endpunkte außer `/api/login` erfordern einen JWT-Token im Header:
+Alle Endpunkte außer `/vertragsdb/api/login` erfordern einen JWT-Token im Header:
 
 ```
 Authorization: Bearer <token>
@@ -128,27 +138,29 @@ Authorization: Bearer <token>
 
 ### Endpunkte
 
+Alle Pfade sind relativ zum Base-Path `/vertragsdb`.
+
 | Methode | Pfad | Rolle | Beschreibung |
 |---|---|---|---|
-| `POST` | `/api/login` | – | Anmelden, liefert JWT-Token |
-| `GET` | `/api/contracts` | viewer | Alle Verträge (Filter: `search`, `category`, `only_valid`) |
-| `POST` | `/api/contracts` | admin | Neuen Vertrag anlegen |
-| `GET` | `/api/contracts/{id}` | viewer | Einzelnen Vertrag abrufen |
-| `PUT` | `/api/contracts/{id}` | admin | Vertrag aktualisieren |
-| `POST` | `/api/contracts/{id}/terminate` | admin | Vertrag beenden |
-| `GET` | `/api/contracts/{id}/documents` | viewer | Dokumente eines Vertrags |
-| `POST` | `/api/contracts/{id}/documents` | admin | Dokument hochladen (PDF, max. 10 MB) |
-| `GET` | `/api/documents/{docId}/download` | viewer | Dokument herunterladen |
-| `GET` | `/api/reports/expiring?days=90` | viewer | Verträge mit ablaufender Kündigungsfrist (Standard: 90 Tage) |
-| `POST` | `/api/contracts/calculate-dates` | admin | Kündigungstermine für alle Verträge berechnen |
-| `GET` | `/api/users` | viewer | Alle Benutzer |
-| `POST` | `/api/users` | admin | Neuen Benutzer anlegen |
-| `PUT` | `/api/users/{id}` | admin | Benutzer bearbeiten (Benutzername, Rolle, Passwort optional) |
-| `DELETE` | `/api/users/{id}` | admin | Benutzer löschen |
-| `GET` | `/api/categories` | viewer | Alle Kategorien abrufen |
-| `POST` | `/api/categories` | admin | Neue Kategorie anlegen |
-| `PUT` | `/api/categories/{id}` | admin | Kategorie umbenennen (kaskadiert auf Verträge) |
-| `DELETE` | `/api/categories/{id}` | admin | Kategorie löschen (nur wenn unbenutzt) |
+| `POST` | `/vertragsdb/api/login` | – | Anmelden, liefert JWT-Token |
+| `GET` | `/vertragsdb/api/contracts` | viewer | Alle Verträge (Filter: `search`, `category`, `only_valid`) |
+| `POST` | `/vertragsdb/api/contracts` | admin | Neuen Vertrag anlegen |
+| `GET` | `/vertragsdb/api/contracts/{id}` | viewer | Einzelnen Vertrag abrufen |
+| `PUT` | `/vertragsdb/api/contracts/{id}` | admin | Vertrag aktualisieren |
+| `POST` | `/vertragsdb/api/contracts/{id}/terminate` | admin | Vertrag beenden |
+| `GET` | `/vertragsdb/api/contracts/{id}/documents` | viewer | Dokumente eines Vertrags |
+| `POST` | `/vertragsdb/api/contracts/{id}/documents` | admin | Dokument hochladen (PDF, max. 10 MB) |
+| `GET` | `/vertragsdb/api/documents/{docId}/download` | viewer | Dokument herunterladen |
+| `GET` | `/vertragsdb/api/reports/expiring?days=90` | viewer | Verträge mit ablaufender Kündigungsfrist (Standard: 90 Tage) |
+| `POST` | `/vertragsdb/api/contracts/calculate-dates` | admin | Kündigungstermine für alle Verträge berechnen |
+| `GET` | `/vertragsdb/api/users` | viewer | Alle Benutzer |
+| `POST` | `/vertragsdb/api/users` | admin | Neuen Benutzer anlegen |
+| `PUT` | `/vertragsdb/api/users/{id}` | admin | Benutzer bearbeiten (Benutzername, Rolle, Passwort optional) |
+| `DELETE` | `/vertragsdb/api/users/{id}` | admin | Benutzer löschen |
+| `GET` | `/vertragsdb/api/categories` | viewer | Alle Kategorien abrufen |
+| `POST` | `/vertragsdb/api/categories` | admin | Neue Kategorie anlegen |
+| `PUT` | `/vertragsdb/api/categories/{id}` | admin | Kategorie umbenennen (kaskadiert auf Verträge) |
+| `DELETE` | `/vertragsdb/api/categories/{id}` | admin | Kategorie löschen (nur wenn unbenutzt) |
 
 ## Benutzerverwaltung
 
@@ -246,14 +258,14 @@ cd frontend
 npm run dev
 ```
 
-Vite startet einen Dev-Server mit Hot-Module-Replacement. Das Backend muss separat laufen; Vite leitet API-Anfragen weiter (Proxy-Konfiguration in `vite.config.js`).
+Vite startet einen Dev-Server mit Hot-Module-Replacement. Das Backend muss separat laufen; Vite leitet API-Anfragen an `/vertragsdb/api` automatisch an `http://localhost:8091` weiter (Proxy-Konfiguration in `vite.config.js`).
 
 ### Produktions-Build
 
 ```bash
 cd frontend && npm run build
-go build -o vertragsdatenbank .
-./vertragsdatenbank
+go build -o vertragsdb .
+./vertragsdb
 ```
 
 ## Sicherheitshinweise
